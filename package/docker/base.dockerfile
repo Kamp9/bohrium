@@ -25,6 +25,8 @@ RUN apt-get -qq install python2.7-scipy python3-scipy > /dev/null
 RUN apt-get -qq install python-matplotlib python3-matplotlib > /dev/null
 RUN apt-get -qq install python-netcdf4 python3-netcdf4 > /dev/null
 RUN apt-get -qq install python-pyopencl python3-pyopencl > /dev/null
+RUN apt-get -qq install zlib1g-dev > /dev/null
+# RUN apt-get -qq install valgrind gdb vim cgdb > /dev/null
 
 # Install OpenCV 3
 ADD https://github.com/opencv/opencv/archive/3.2.0.zip .
@@ -41,12 +43,8 @@ RUN mkdir -p /opt/amd_src
 ADD AMD-APP-SDK-linux-v2.9-1.599.381-GA-x64.tar.bz2 /opt/amd_src
 ENV OPENCL_HOME /opt/AMDAPPSDK-2.9-1
 ENV OPENCL_LIBPATH /opt/AMDAPPSDK-2.9-1/lib/x86_64
-
-# RUN tar xjf AMD-APP-SDK-linux-v2.9-1.599.381-GA-x64.tar.bz2
 RUN sh /opt/amd_src/AMD-APP-SDK-v2.9-1.599.381-GA-linux64.sh -- -s -a yes > /dev/null
 ENV OpenCL_LIBPATH "/opt/AMDAPPSDK-2.9-1/lib/x86_64/"
 ENV OpenCL_INCPATH "/opt/AMDAPPSDK-2.9-1/include"
 ENV LD_LIBRARY_PATH "$OpenCL_LIBPATH:$LD_LIBRARY_PATH"
 
-# Install debug dependencies
-RUN apt-get -qq install zlib1g-dev valgrind gdb vim cgdb > /dev/null

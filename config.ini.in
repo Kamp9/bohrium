@@ -7,10 +7,13 @@
 #     The bridge is never part of the list                               #
 ##########################################################################
 [stacks]
-default    = bcexp_cpu, bccon, node, openmp
-openmp     = bcexp_cpu, bccon, node, openmp
-opencl     = bcexp_gpu, bccon, node, opencl, openmp
-cuda       = bcexp_gpu, bccon, node, cuda, openmp
+default      = bcexp_cpu, bccon, node, openmp
+openmp       = bcexp_cpu, bccon, node, openmp
+opencl       = bcexp_gpu, bccon, node, opencl, openmp
+cuda         = bcexp_gpu, bccon, node, cuda, openmp
+proxy_openmp = bcexp_cpu, bccon, proxy, node, openmp
+proxy_opencl = bcexp_cpu, bccon, proxy, node, opencl, openmp
+proxy_cuda   = bcexp_cpu, bccon, proxy, node, cuda, openmp
 
 ############
 # Managers #
@@ -83,20 +86,24 @@ graph = false
 tmp_dir =
 # Directory for cache files (persistent between executions). Default: the empty string, which disable the cache
 cache_dir = ${BIN_KERNEL_CACHE_DIR}
+# Maximum number of cache files to keep in the cache dir (use -1 for infinity)
+cache_file_max = 50000
 # The command to execute the compiler where {OUT} is replaced with the binary file output and {IN} with the source file
 compiler_cmd = "${VE_OPENMP_COMPILER_CMD} ${VE_OPENMP_COMPILER_FLG} ${VE_OPENMP_COMPILER_INC} ${VE_OPENMP_COMPILER_LIB} {IN} -o {OUT}"
 # JIT compile options
 compiler_openmp = ${_VE_OPENMP_COMPILER_OPENMP}
 compiler_openmp_simd = ${_VE_OPENMP_COMPILER_OPENMP_SIMD}
 # List of extension methods
-libs = ${OPENMP_LIBS}
+libs = ${BH_OPENMP_LIBS}
 # The pre-fuser to use
 pre_fuser = pre_fuser_lossy
 # List of instruction fuser/transformers
 fuser_list = greedy, collapse_redundant_axes
+# Number of edges in the fusion graph that makes the greedy fuser use the `reshapable_first` fuser instead
+greedy_threshold = 10000
 # *_as_var specifies whether to hard-code variables or have them as variables
 index_as_var = true
-strides_as_variables = true
+strides_as_var = true
 const_as_var = true
 # Monolithic combines all blocks into one shared library rather than a block-nest per shared library
 monolithic = false
@@ -113,6 +120,8 @@ graph = false
 tmp_dir =
 # Directory for cache files (persistent between executions). Default: the empty string, which disable the cache
 cache_dir = ${BIN_KERNEL_CACHE_DIR}
+# Maximum number of cache files to keep in the cache dir (use -1 for infinity)
+cache_file_max = 50000
 # Device type can be one of 'auto', 'gpu', 'cpu', 'accelerator', or 'default'
 device_type = auto
 # OpenCL platform. -1 means automatic. Other numbers will index into list of platforms.
@@ -120,14 +129,16 @@ platform_no = -1
 # Additional options given to the opencl compiler. See documentation for clBuildProgram
 compiler_flg = "${VE_OPENMP_COMPILER_INC}"
 # List of extension methods
-libs = ${OPENCL_LIBS}
+libs = ${BH_OPENCL_LIBS}
 # The pre-fuser to use
 pre_fuser = pre_fuser_lossy
 # List of instruction fuser/transformers
 fuser_list = greedy, push_reductions_inwards, split_for_threading, collapse_redundant_axes
+# Number of edges in the fusion graph that makes the greedy fuser use the `reshapable_first` fuser instead
+greedy_threshold = 10000
 # *_as_var specifies whether to hard-code variables or have them as variables
 index_as_var = true
-strides_as_variables = true
+strides_as_var = true
 const_as_var = true
 # OpenCL work group sizes
 work_group_size_1dx = 128
@@ -149,6 +160,8 @@ graph = false
 tmp_dir =
 # Directory for cache files (persistent between executions). Default: the empty string, which disable the cache
 cache_dir = ${BIN_KERNEL_CACHE_DIR}
+# Maximum number of cache files to keep in the cache dir (use -1 for infinity)
+cache_file_max = 50000
 # The command to execute the compiler where {OUT} is replaced with the binary file output and {IN} with the source file
 # Additionally, {MAJOR} and {MINOR} are dynamically replaced with the compute capability version of the device
 compiler_cmd = "${CUDA_NVCC_EXECUTABLE} --cubin -m64 -arch=sm_{MAJOR}{MINOR} -O3 ${VE_OPENMP_COMPILER_INC} {IN} -o {OUT}"
@@ -158,9 +171,11 @@ libs = ${CUDA_LIBS}
 pre_fuser = pre_fuser_lossy
 # List of instruction fuser/transformers
 fuser_list = greedy, push_reductions_inwards, split_for_threading, collapse_redundant_axes
+# Number of edges in the fusion graph that makes the greedy fuser use the `reshapable_first` fuser instead
+greedy_threshold = 10000
 # *_as_var specifies whether to hard-code variables or have them as variables
 index_as_var = false
-strides_as_variables = false
+strides_as_var = false
 const_as_var = false
 # CUDA work group sizes
 work_group_size_1dx = 128

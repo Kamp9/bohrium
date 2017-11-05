@@ -18,29 +18,37 @@ GNU Lesser General Public License along with Bohrium.
 If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __BH_JITK_APPLY_FUSION_HPP
-#define __BH_JITK_APPLY_FUSION_HPP
+#pragma once
 
-#include <iostream>
-#include <chrono>
+#include <map>
+#include <string>
 
 #include <bh_instruction.hpp>
-#include <bh_config_parser.hpp>
 #include <jitk/block.hpp>
-#include <jitk/fuser.hpp>
-#include <jitk/transformer.hpp>
-#include <jitk/fuser_cache.hpp>
 #include <jitk/statistics.hpp>
+
 
 namespace bohrium {
 namespace jitk {
 
-// Create a block list based on 'instr_list' and what is in the 'config' and 'fcache'
-// 'avoid_rank0_sweep' will avoid fusion of sweeped and non-sweeped blocks at the root level
-std::vector<Block> get_block_list(const std::vector<bh_instruction*> &instr_list, const ConfigParser &config,
-                                  FuseCache &fcache, Statistics &stat, bool avoid_rank0_sweep);
+class CodegenCache {
+private:
+    std::map<size_t, std::string> _cache;
+    // Some statistics
+    jitk::Statistics &stat;
+public:
+    // The constructor takes the statistic object
+    CodegenCache(jitk::Statistics &stat) : stat(stat) {}
 
-} // jitk
+    // Check the cache for a source code that matches 'instr_list'
+    std::pair<std::string, bool> get(const std::vector<Block> &block_list, const SymbolTable &symbols);
+
+    // Insert 'source' as a hit when requesting 'block_list'
+    void insert(std::string source, const std::vector<Block> &block_list, const SymbolTable &symbols);
+};
+
+
+} // jit
 } // bohrium
 
-#endif
+

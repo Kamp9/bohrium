@@ -29,6 +29,7 @@ If not, see <http://www.gnu.org/licenses/>.
 #include <vector>
 
 #include <colors.hpp>
+#include <bh_ir.hpp>
 #include <bh_instruction.hpp>
 #include <jitk/base_db.hpp>
 
@@ -54,20 +55,24 @@ class Statistics {
     uint64_t max_memory_usage          = 0;
     uint64_t totalwork                 = 0;
     uint64_t threading_below_threshold = 0;
-    uint64_t kernel_cache_lookups      = 0;
-    uint64_t kernel_cache_misses       = 0;
     uint64_t fuser_cache_lookups       = 0;
     uint64_t fuser_cache_misses        = 0;
+    uint64_t codegen_cache_lookups     = 0;
+    uint64_t codegen_cache_misses      = 0;
+    uint64_t kernel_cache_lookups      = 0;
+    uint64_t kernel_cache_misses       = 0;
     uint64_t num_instrs_into_fuser     = 0;
     uint64_t num_blocks_out_of_fuser   = 0;
     std::chrono::duration<double> time_total_execution{0};
     std::chrono::duration<double> time_pre_fusion{0};
     std::chrono::duration<double> time_fusion{0};
-    std::chrono::duration<double> time_exec{0};
+    std::chrono::duration<double> time_codegen{0};
     std::chrono::duration<double> time_compile{0};
+    std::chrono::duration<double> time_exec{0};
     std::chrono::duration<double> time_offload{0};
     std::chrono::duration<double> time_copy2dev{0};
     std::chrono::duration<double> time_copy2host{0};
+    std::chrono::duration<double> time_ext_method{0};
 
     std::chrono::duration<double> wallclock{0};
     std::chrono::time_point<std::chrono::steady_clock> time_started{std::chrono::steady_clock::now()};
@@ -92,6 +97,7 @@ class Statistics {
 
             out << BLU << "[" << backend_name << "] Profiling: \n" << RST;
             out << "Fuse cache hits:                 " << GRN << fuse_cache_hits()                   << "\n" << RST;
+            out << "Codegen cache hits               " << GRN << codegen_cache_hits()                << "\n" << RST;
             out << "Kernel cache hits                " << GRN << kernel_cache_hits()                 << "\n" << RST;
             out << "Array contractions:              " << GRN << array_contractions()                << "\n" << RST;
             out << "Outer-fusion ratio:              " << GRN << outer_fusion_ratio()                << "\n" << RST;
@@ -106,10 +112,12 @@ class Statistics {
             out << "Total Execution:                 " << BLU << time_total_execution.count() << "s" << "\n" << RST;
             out << "  Pre-fusion:                    " << YEL << time_pre_fusion.count() << "s"      << "\n" << RST;
             out << "  Fusion:                        " << YEL << time_fusion.count() << "s"          << "\n" << RST;
+            out << "  Codegen:                       " << YEL << time_codegen.count() << "s"         << "\n" << RST;
             out << "  Compile:                       " << YEL << time_compile.count() << "s"         << "\n" << RST;
             out << "  Exec:                          " << YEL << time_exec.count() << "s"            << "\n" << RST;
             out << "  Copy2dev:                      " << YEL << time_copy2dev.count() << "s"        << "\n" << RST;
             out << "  Copy2host:                     " << YEL << time_copy2host.count() << "s"       << "\n" << RST;
+            out << "  Ext-method:                    " << YEL << time_ext_method.count() << "s"      << "\n" << RST;
             out << "  Offload:                       " << YEL << time_offload.count() << "s"         << "\n" << RST;
             out << "  Other:                         " << YEL << time_other() << "s"                 << "\n" << RST;
             out << "\n";
@@ -134,6 +142,7 @@ class Statistics {
             file << "----"                                                      << "\n";
             file << backend_name << ":"                                         << "\n";
             file << "  fuse_cache_hits: "       << fuse_cache_hits()            << "\n";
+            file << "  codegen_cache_hits: "    << codegen_cache_hits()         << "\n";
             file << "  kernel_cache_hits: "     << kernel_cache_hits()          << "\n";
             file << "  array_contractions: "    << array_contractions()         << "\n";
             file << "  outer_fusion_ratio: "    << outer_fusion_ratio()         << "\n";
@@ -160,18 +169,15 @@ class Statistics {
     }
 
     // Record statistics based on the 'instr_list'
-    void record(std::vector<bh_instruction> &instr_list) {
+    void record(const BhIR &bhir) {
         if (enabled) {
-            for (const bh_instruction &instr: instr_list) {
+            for (const bh_instruction &instr: bhir.instr_list) {
                 if (instr.opcode != BH_IDENTITY and not bh_opcode_is_system(instr.opcode)) {
                     const std::vector<int64_t> shape = instr.shape();
                     totalwork += bh_nelements(shape.size(), &shape[0]);
                 }
-
-                if (instr.opcode == BH_SYNC) {
-                    ++num_syncs;
-                }
             }
+            num_syncs += bhir.getSyncs().size();
         }
     }
 
@@ -184,6 +190,10 @@ class Statistics {
   private:
     std::string fuse_cache_hits() {
         return pprint_ratio(fuser_cache_lookups - fuser_cache_misses, fuser_cache_lookups);
+    }
+
+    std::string codegen_cache_hits() {
+        return pprint_ratio(codegen_cache_lookups - codegen_cache_misses, codegen_cache_lookups);
     }
 
     std::string kernel_cache_hits() {
@@ -212,7 +222,8 @@ class Statistics {
 
     double time_other() {
         std::chrono::duration<double> time_other{0};
-        return (time_total_execution - time_pre_fusion - time_fusion - time_compile - time_exec  - time_copy2dev - time_copy2host - time_offload).count();
+        return (time_total_execution - time_pre_fusion - time_fusion - time_codegen - time_compile - time_exec
+                - time_copy2dev - time_copy2host - time_offload).count();
     }
 
     double unaccounted() {

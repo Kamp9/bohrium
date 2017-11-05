@@ -188,7 +188,8 @@ static int _mremap_data(void *dst, void *src, npy_intp size) {
         int errsv = errno; // mremap() sets the errno.
         PyErr_Format(
             PyExc_RuntimeError,
-            "Error - could not mremap a data region. Returned error code by mremap(): %s.\n",
+            "Error - could not mremap a data region (src: %p, dst: %p, size: %ld). Returned error code by mremap(): %s.\n",
+            src, dst, size,
             strerror(errsv)
         );
         return -1;
@@ -690,6 +691,10 @@ static PyObject* BhArray_all(PyObject *self, PyObject *args, PyObject *kwds) {
     return method2function("all", self, args, kwds);
 }
 
+static PyObject* BhArray_conj(PyObject *self, PyObject *args, PyObject *kwds) {
+    return method2function("conj", self, args, kwds);
+}
+
 static PyObject* BhArray_min(PyObject *self, PyObject *args, PyObject *kwds) {
     return method2function("min", self, args, kwds);
 }
@@ -748,6 +753,8 @@ static PyMethodDef BhArrayMethods[] = {
     {"cumprod",            (PyCFunction) BhArray_cumprod,       METH_VARARGS | METH_KEYWORDS, "a.cumprod(axis=None, dtype=None, out=None)\n\nReturn the cumulative product of the array elements over the given axis\n\nRefer to `numpy.cumprod` for full documentation."},
     {"any",                (PyCFunction) BhArray_any,           METH_VARARGS | METH_KEYWORDS, "a.any(axis=None, out=None)\n\nTest whether any array element along a given axis evaluates to True.\n\nRefer to `numpy.any` for full documentation."},
     {"all",                (PyCFunction) BhArray_all,           METH_VARARGS | METH_KEYWORDS, "a.all(axis=None, out=None)\n\nTest whether all array elements along a given axis evaluate to True.\n\nRefer to `numpy.all` for full documentation."},
+    {"conj",               (PyCFunction) BhArray_conj,          METH_VARARGS | METH_KEYWORDS, "a.conj(x[, out])\n\nReturn the complex conjugate, element-wise.\n\nRefer to `numpy.conj` for full documentation."},
+    {"conjugate",          (PyCFunction) BhArray_conj,          METH_VARARGS | METH_KEYWORDS, "a.conjugate(x[, out])\n\nReturn the complex conjugate, element-wise.\n\nRefer to `numpy.conj` for full documentation."},
     {"min",                (PyCFunction) BhArray_min,           METH_VARARGS | METH_KEYWORDS, "a.min(axis=None, out=None)\n\nReturn the minimum along a given axis.\n\nRefer to numpy.amin for full documentation."},
     {"max",                (PyCFunction) BhArray_max,           METH_VARARGS | METH_KEYWORDS, "a.max(axis=None, out=None)\n\nReturn the maximum along a given axis.\n\nRefer to numpy.amax for full documentation."},
     {"argmin",             (PyCFunction) BhArray_argmin,        METH_VARARGS | METH_KEYWORDS, "a.argmin(axis=None, out=None)\n\nReturns the indices of the minimum values along an axis.\n\nRefer to numpy.argmin for full documentation."},
@@ -766,6 +773,7 @@ static PyMemberDef BhArrayMembers[] = {
     {"bhc_ary_version",  T_OBJECT_EX, offsetof(BhArray, bhc_ary_version),  0, "The version of the Bohrium backend base-array"},
     {"bhc_view",         T_OBJECT_EX, offsetof(BhArray, bhc_view),         0, "The Bohrium backend view-array"},
     {"bhc_view_version", T_OBJECT_EX, offsetof(BhArray, bhc_view_version), 0, "The version of the Bohrium backend view-array"},
+    {"bhc_mmap_allocated", T_BOOL, offsetof(BhArray, mmap_allocated), 0, "Is the base data allocated with mmap?"},
     {NULL}  /* Sentinel */
 };
 
@@ -1099,7 +1107,48 @@ static PyObject* BhArray_Repr(PyObject *self) {
         return NULL;
     }
 
-    PyObject *str = PyArray_Type.tp_repr(t);
+    PyObject *str = NULL;
+
+    BH_PyArrayObject *base = &((BhArray*) self)->base;
+    if (base->nd == 0) {
+        // 0-rank array -> single value
+        void *data = PyArray_GetPtr((PyArrayObject*) self, 0);
+        char c[32];
+
+        switch (base->descr->type) {
+            case 'i': // int32
+                snprintf(c, sizeof(c), "%d", *((npy_int*) data));
+                break;
+            case 'l': // int64
+                snprintf(c, sizeof(c), "%ld", *((npy_long*) data));
+                break;
+            case 'I': // uint32
+                 snprintf(c, sizeof(c), "%u", *((npy_uint*) data));
+                break;
+            case 'L': // uint64
+                 snprintf(c, sizeof(c), "%lu", *((npy_ulong*) data));
+                break;
+            case 'f': // float
+                snprintf(c, sizeof(c), "%.6g", *((npy_float*) data));
+                break;
+            case 'd': // double
+                snprintf(c, sizeof(c), "%.6g", *((npy_double*) data));
+                break;
+        }
+
+        if (c[0] == 0) {
+            str = PyArray_Type.tp_repr(t);
+        } else {
+#if defined(NPY_PY3K)
+            str = PyUnicode_FromString(c);
+#else
+            str = PyString_FromString(c);
+#endif
+        }
+    } else {
+        str = PyArray_Type.tp_repr(t);
+    }
+
     Py_DECREF(t);
 
     return str;

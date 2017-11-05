@@ -4,7 +4,6 @@ Reorganization of Array Elements Routines
 """
 import warnings
 import numpy_force as numpy
-from numpy.lib.stride_tricks import as_strided
 from . import bhary
 from ._util import is_scalar
 from .bhary import fix_biclass_wrapper, get_bhc
@@ -12,6 +11,7 @@ from . import target
 from . import array_create
 from . import array_manipulation
 from . import ufuncs
+from . import numpy_backport
 
 
 @fix_biclass_wrapper
@@ -119,7 +119,7 @@ def take(a, indices, axis=None, out=None, mode='raise'):
 
     if not bhary.check(a):
         indices = array_create.array(indices, bohrium=False)
-        numpy.take(a, indices, axis=axis, out=out, mode=mode)
+        return numpy.take(a, indices, axis=axis, out=out, mode=mode)
 
     if mode != "raise":
         warnings.warn("Bohrium only supports the 'raise' mode not '%s', "
@@ -230,7 +230,6 @@ def scatter(ary, indexes, values):
         Values to write into 'ary"
     """
 
-    ary = array_create.array(ary)
     indexes = array_manipulation.flatten(array_create.array(indexes, dtype=numpy.uint64), always_copy=False)
     values = array_manipulation.flatten(array_create.array(values, dtype=ary.dtype), always_copy=False)
 
@@ -294,6 +293,9 @@ def put(a, ind, v, mode='raise'):
 
     """
 
+    if ind.size == 0:
+        return  # Nothing to insert!
+
     if not bhary.check(a):
         return numpy.put(a, ind.astype(numpy.int64), v, mode=mode)
 
@@ -302,19 +304,18 @@ def put(a, ind, v, mode='raise'):
                       "it will be handled by the original NumPy." % mode, UserWarning, 2)
         return numpy.put(a, ind, v, mode=mode)
 
-    ary = array_create.array(a)
     indexes = array_manipulation.flatten(array_create.array(ind, dtype=numpy.uint64), always_copy=False)
-    values = array_manipulation.flatten(array_create.array(v, dtype=ary.dtype), always_copy=False)
+    values = array_manipulation.flatten(array_create.array(v, dtype=a.dtype), always_copy=False)
 
     # Now let's make the shape of 'indexes' and 'values' match
     if indexes.size > values.size:
         if values.size == 1:
             # When 'values' is a scalar, we can broadcast it to match 'indexes'
-            values = as_strided(values, shape=indexes.shape, strides=(0,))
+            values = numpy_backport.as_strided(values, shape=indexes.shape, strides=(0,))
         else:  # else we repeat 'values' enough times to be larger than 'indexes'
-            values = as_strided(values,
-                                shape=(indexes.size // values.size + 2, values.size),
-                                strides=(0, values.itemsize))
+            values = numpy_backport.as_strided(values,
+                                               shape=(indexes.size // values.size + 2, values.size),
+                                               strides=(0, values.itemsize))
             values = array_manipulation.flatten(values, always_copy=False)
 
     # When 'values' is too large, we simple cut the end off
@@ -322,7 +323,7 @@ def put(a, ind, v, mode='raise'):
         values = values[0:indexes.size]
 
     # Now that 'indexes' and 'values' have the same shape, we can call 'scatter'
-    scatter(ary, indexes, values)
+    scatter(a, indexes, values)
 
 
 @fix_biclass_wrapper
@@ -408,7 +409,6 @@ def cond_scatter(ary, indexes, values, mask):
         A mask that specifies which indexes and values to include and exclude
     """
 
-    ary = array_create.array(ary)
     indexes = array_manipulation.flatten(array_create.array(indexes, dtype=numpy.uint64), always_copy=False)
     values = array_manipulation.flatten(array_create.array(values, dtype=ary.dtype), always_copy=False)
     mask = array_manipulation.flatten(array_create.array(mask, dtype=numpy.bool), always_copy=False)

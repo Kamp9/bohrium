@@ -12,15 +12,13 @@ endif()
 message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 
 # Everyting else should come after 'project(BOHRIUM)' since 'project()' defines many of the CMAKE_BUILD_* vars
-project(BOHRIUM)
+project(BOHRIUM C CXX)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")    # Shared modules
 include(CheckCXXCompilerFlag)
 include(CheckCCompilerFlag)
 include(FeatureSummary)
 include(LibVsLib64) # Sets LIBDIR
-
-message(STATUS "LIBDIR: ${LIBDIR}")
 
 # Write all compile commands to 'compile_commands.json', which can be used by YouCompleteMe
 # and other auto-completion software
@@ -32,9 +30,6 @@ ADD_CUSTOM_TARGET(run_install COMMAND ${CMAKE_MAKE_PROGRAM} install)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)                                     # .local is default
     set (CMAKE_INSTALL_PREFIX "$ENV{HOME}/.local" CACHE PATH "The install prefix (default path is ~/.local)" FORCE)
 endif()
-
-set(BENCHMARK_DIR "${CMAKE_SOURCE_DIR}/benchmark")                                  # Benchmarks (npbackend)
-message(STATUS "Benchmark-dir: ${BENCHMARKS_DIR}")
 
 ####################################
 # Default compile-flags for Bohrium
@@ -118,19 +113,22 @@ include_directories(${Boost_INCLUDE_DIRS})
 
 #####################
 # Bohrium components
-set(OPENMP_LIBS "")
-set(OPENCL_LIBS "")
+set(BH_OPENMP_LIBS "")
+set(BH_OPENCL_LIBS "")
 
 add_subdirectory(core)
+
 add_subdirectory(vem/node)
-#add_subdirectory(vem/proxy) TODO: fix and enable
+add_subdirectory(vem/proxy)
+
+add_subdirectory(ve/openmp)
+add_subdirectory(ve/opencl)
+add_subdirectory(ve/cuda)
+
 add_subdirectory(filter/pprint)
 add_subdirectory(filter/bccon)
 add_subdirectory(filter/bcexp)
 add_subdirectory(filter/noneremover)
-add_subdirectory(ve/openmp)
-add_subdirectory(ve/opencl)
-add_subdirectory(ve/cuda)
 
 add_subdirectory(extmethods/blas)
 add_subdirectory(extmethods/clblas)
@@ -142,10 +140,11 @@ add_subdirectory(extmethods/opencv)
 add_subdirectory(bridge/cxx)
 add_subdirectory(bridge/c)
 add_subdirectory(bridge/npbackend)
+
 add_subdirectory(test)
 
-string(REPLACE ";" ", " OPENMP_LIBS "${OPENMP_LIBS}")
-string(REPLACE ";" ", " OPENCL_LIBS "${OPENCL_LIBS}")
+string(REPLACE ";" ", " BH_OPENMP_LIBS "${BH_OPENMP_LIBS}")
+string(REPLACE ";" ", " BH_OPENCL_LIBS "${BH_OPENCL_LIBS}")
 
 #############################
 # Install thirdparty headers
@@ -157,10 +156,21 @@ install(DIRECTORY thirdparty/Random123-1.09/include/Random123
 install(DIRECTORY include/jitk/kernel_dependencies
         DESTINATION share/bohrium/include COMPONENT bohrium)
 
+###############
+# Bohrium Cache
+set(BIN_KERNEL_CACHE_DIR ${CMAKE_INSTALL_PREFIX}/var/bohrium/cache CACHE PATH
+        "Path to the directory of the persistent JIT kernel cache")
+
+# When using the default cache location, we will install the cache dir and set permissions to 777.
+if ("${BIN_KERNEL_CACHE_DIR}" STREQUAL "${CMAKE_INSTALL_PREFIX}/var/bohrium/cache")
+    file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/cache)
+    install(DIRECTORY ${CMAKE_BINARY_DIR}/cache DESTINATION var/bohrium DIRECTORY_PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE
+            GROUP_WRITE GROUP_READ GROUP_EXECUTE WORLD_WRITE WORLD_READ WORLD_EXECUTE
+            COMPONENT bohrium)
+endif()
+
 #############################
 # Bohrium configuration file
-set(BIN_KERNEL_CACHE_DIR ${CMAKE_INSTALL_PREFIX}/var/bohrium/cache CACHE PATH "Path to the directory of the persistent JIT kernel cache")
-
 configure_file(${CMAKE_SOURCE_DIR}/config.ini.in ${CMAKE_BINARY_DIR}/config.ini)    # Fill out the config-template
 
 set(FORCE_CONFIG_PATH "OFF" CACHE STRING "Manually setting the install path of the config (ini) file")
@@ -192,6 +202,10 @@ if(JUPYTER_FOUND)
   endif()
 endif()
 
+MESSAGE(STATUS "")
+MESSAGE(STATUS "+---------------------------------------------------------+")
+MESSAGE(STATUS "|                         SUMMARY                         |")
+MESSAGE(STATUS "+---------------------------------------------------------+")
 MESSAGE(STATUS "C compiler:" ${CMAKE_C_COMPILER})
 MESSAGE(STATUS "C compile flags:" ${CMAKE_C_COMPILE_FLAGS})
 MESSAGE(STATUS "C debug flags:" ${CMAKE_C_FLAGS_DEBUG})
@@ -203,5 +217,7 @@ MESSAGE(STATUS "CXX debug flags:" ${CMAKE_CXX_FLAGS_DEBUG})
 MESSAGE(STATUS "CXX release flags:" ${CMAKE_CXX_FLAGS_RELEASE})
 MESSAGE(STATUS "CXX min size flags:" ${CMAKE_CXX_FLAGS_MINSIZEREL})
 MESSAGE(STATUS "CXX flags:" ${CMAKE_CXX_FLAGS})
+MESSAGE(STATUS "+---------------------------------------------------------+")
+MESSAGE(STATUS "")
 
 feature_summary(WHAT ALL)

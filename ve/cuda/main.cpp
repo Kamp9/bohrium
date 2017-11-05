@@ -62,7 +62,7 @@ public:
     Impl(int stack_level) : ComponentImplWithChild(stack_level), stat(config.defaultGet("prof", false)),
                             fcache(stat), engine(config, stat) {}
     ~Impl();
-    void execute(bh_ir *bhir);
+    void execute(BhIR *bhir);
     void extmethod(const string &name, bh_opcode opcode) {
         // ExtmethodFace does not have a default or copy constructor thus
         // we have to use its move constructor.
@@ -78,11 +78,6 @@ public:
     // Write an CUDA kernel
     void write_kernel(const Block &block, const SymbolTable &symbols, const ConfigParser &config,
                       const vector<const LoopB *> &threaded_blocks, stringstream &ss);
-
-    // Implement the handle of extension methods
-    void handle_extmethod(bh_ir *bhir) {
-        util_handle_extmethod(this, bhir, extmethods, child_extmethods, child, &engine);
-    }
 
     // Handle messages from parent
     string message(const string &msg) {
@@ -210,14 +205,14 @@ void Impl::write_kernel(const Block &block, const SymbolTable &symbols, const Co
 }
 
 
-void Impl::execute(bh_ir *bhir) {
+void Impl::execute(BhIR *bhir) {
     if (disabled) {
         child.execute(bhir);
         return;
     }
 
     // Let's handle extension methods
-    util_handle_extmethod(this, bhir, extmethods, child_extmethods, child, &engine);
+    util_handle_extmethod(this, bhir, extmethods, child_extmethods, child, stat, &engine);
 
     // And then the regular instructions
     handle_gpu_execution(*this, bhir, engine, config, stat, fcache, &child);

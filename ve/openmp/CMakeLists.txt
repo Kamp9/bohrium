@@ -18,16 +18,35 @@ install(TARGETS bh_ve_openmp DESTINATION ${LIBDIR} COMPONENT bohrium)
 
 
 #
-#   The rest of the this file is finding the compiler and flags to write in the config file
+# The rest of the this file is finding the compiler and flags to write in the config file
 #
-
 include(CheckCCompilerFlag)
 include(FeatureSummary)
 
 # Import and detect OpenMP features
 find_package(OpenMP COMPONENTS bohrium)
 set_package_properties(OpenMP PROPERTIES TYPE RECOMMENDED PURPOSE "Multicore processing, essential for performance of the CPU VE.")
-if(OPENMP_FOUND)
+
+# If not found on Apple with Clang, we try again with no warnings
+# NOTE: This was fixed in CMake 3.9.4
+if(NOT(OPENMP_FOUND OR OpenMP_C_FOUND) AND APPLE)
+    unset(OpenMP_C_FLAGS CACHE)
+    unset(OpenMP_C_LIB_NAMES CACHE)
+    unset(OpenMP_CXX_FLAGS CACHE)
+    unset(OpenMP_CXX_LIB_NAMES CACHE)
+
+    # Clang will break find_package(OpenMP) because CMake supplies '-Werror' and a linker command line argument, which isn't used.
+    # Therefore we add '-Wno-unused-command-line-argument'
+    if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
+        set(OpenMP_C_FLAG "-fopenmp=libomp -Wno-unused-command-line-argument")
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(OpenMP_CXX_FLAG "-fopenmp=libomp -Wno-unused-command-line-argument")
+    endif()
+    find_package(OpenMP COMPONENTS bohrium)
+endif()
+
+if(OPENMP_FOUND OR OpenMP_C_FOUND)
     # Check for the SIMD flag
     set(OpenMP_SIMD_C_FLAGS "${OpenMP_C_FLAGS} ${OpenMP_C_FLAGS}-simd")
     check_c_compiler_flag("${OpenMP_SIMD_C_FLAGS}" OPENMP_SIMD_FLAG_FOUND)
@@ -57,23 +76,22 @@ check_c_compiler_flag(-O3 FLAG_03_FOUND)
 check_c_compiler_flag(-march=native FLAG_MARCH_NATIVE_FOUND)
 check_c_compiler_flag(-Werror FLAG_WERROR_FOUND)
 
-#
 # JIT-compiler capabilities: optimization, and parallelization
-#
 if(APPLE)
-    # Fallback on APPLE, this will run but without optimizations and parallelization.
-    set(VE_OPENMP_COMPILER_INC "")
     set(VE_OPENMP_COMPILER_FLG "-x c -dynamiclib -arch x86_64 -Wno-expansion-to-defined")
-    set(VE_OPENMP_COMPILER_LIB "-lm -L${VE_OPENMP_COMPILER_INC}/${LIBDIR} -lbh")
 else()
-    # Mandatory flags
     set(VE_OPENMP_COMPILER_FLG "-x c -fPIC -shared ${C99_FLAG}")
 endif()
 
 # Optimizations
-if (FLAG_03_FOUND AND !APPLE)
-    # This doesn't work with MacOS at the moment
+if (FLAG_03_FOUND)
     set(VE_OPENMP_COMPILER_FLG "${VE_OPENMP_COMPILER_FLG} -O3")
+
+    # With Clang, -O3 gives a warning about not being able to vectorize loops
+    # TODO: Figure out if we can actually have clang vectorize the loops
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(VE_OPENMP_COMPILER_FLG "${VE_OPENMP_COMPILER_FLG} -Wno-pass-failed")
+    endif()
 endif()
 if (FLAG_MARCH_NATIVE_FOUND)
     set(VE_OPENMP_COMPILER_FLG "${VE_OPENMP_COMPILER_FLG} -march=native")

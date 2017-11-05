@@ -7,6 +7,7 @@ import numpy_force as numpy
 from . import bhary
 from . import _util
 from .bhary import fix_biclass_wrapper
+from . import numpy_backport
 
 
 @fix_biclass_wrapper
@@ -154,7 +155,7 @@ def diagonal(ary, offset=0, axis1=0, axis2=1):
     ary = ary[..., :diag_size, offset:(offset + diag_size)]
 
     ret_strides = ary.strides[:-2] + (ary.strides[-1] + ary.strides[-2],)
-    return numpy.lib.stride_tricks.as_strided(ary, shape=ret_shape, strides=ret_strides)
+    return numpy_backport.as_strided(ary, shape=ret_shape, strides=ret_strides)
 
 
 @fix_biclass_wrapper
@@ -461,6 +462,13 @@ def broadcast_arrays(*args):
     try:
         if len(args) == 0:
             return ([], [])
+
+        if len(args) == 1:
+            if numpy.isscalar(args[0]):  # It is possible that `args[0]` is a scalar
+                shape = (1,)
+            else:
+                shape = args[0].shape
+            return (args, shape)
 
         # Common case where nothing needs to be broadcasted.
         bcast = numpy.broadcast(*args)

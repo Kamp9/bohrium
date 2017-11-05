@@ -35,13 +35,17 @@ class Impl : public ComponentImplWithChild {
   public:
     Impl(int stack_level) : ComponentImplWithChild(stack_level) {};
     ~Impl() {}; // NB: a destructor implementation must exist
-    void execute(bh_ir *bhir) {
+    void execute(BhIR *bhir) {
         stringstream ss;
-        ss << "trace-" << count++ << ".txt";
+        ss << "trace-" << count << ".txt";
         cout << "pprint-filter: writing trace('" << ss.str() << "')." << endl;
         ofstream f(ss.str());
-        f << "Trace " << count << ":" << endl;
-        for(const bh_instruction &instr: bhir->instr_list) {
+        f << "Trace " << count++ << " (syncs:";
+        for (const bh_base *b: bhir->getSyncs()) {
+            f << " a" << b->get_label();
+        }
+        f << "):" << endl;
+        for (const bh_instruction &instr: bhir->instr_list) {
             f << instr << endl;
          // f << instr.pprint(false) << endl;
         }

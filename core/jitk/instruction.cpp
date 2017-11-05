@@ -254,6 +254,14 @@ void write_operation(const bh_instruction &instr, const vector<string> &ops, str
             }
             break;
         }
+        case BH_CONJ:
+            if (opencl) {
+                out << ops[0] << " = " << ops[1] << ";\n";
+                out << ops[0] << ".y *= -1;\n";
+            } else {
+                out << ops[0] << " = conj(" << ops[1] << ");\n";
+            }
+            break;
         case BH_RANGE:
             out << ops[0] << " = " << ops[1] << ";\n";
             break;
@@ -568,8 +576,18 @@ void write_instr(const Scope &scope, const bh_instruction &instr, stringstream &
         {
             stringstream ss;
             ss << "(";
+            if (scope.symbols.strides_as_var) {
+                ss << "vo" << scope.symbols.offsetStridesID(instr.operand[0]);
+            } else {
+                ss << instr.operand[0].start;
+            }
             for(int64_t i=0; i < instr.operand[0].ndim; ++i) {
-                ss << "+i" << i << "*" << instr.operand[0].stride[i];
+                ss << "+i" << i << "*";
+                if (scope.symbols.strides_as_var) {
+                    ss << "vs" << scope.symbols.offsetStridesID(instr.operand[0]) << "_" << i;
+                } else {
+                    ss << instr.operand[0].stride[i];
+                }
             }
             ss << ")";
             ops.push_back(ss.str());
@@ -591,12 +609,27 @@ void write_instr(const Scope &scope, const bh_instruction &instr, stringstream &
         // Write the random generation
         {
             stringstream ss;
-            ss << "random123(" << instr.constant.value.r123.start \
-               << ", " << instr.constant.value.r123.key << ", ";
+            // Find the random `start` and `key`
+            const int64_t constID = scope.symbols.constID(instr);
+            if (constID >= 0) {
+                ss << "random123(" << "c" << constID << ".x, " << "c" << constID << ".y, " ;
+            } else {
+                ss << "random123(" << instr.constant.value.r123.start << ", " << instr.constant.value.r123.key << ", ";
+            }
 
             // Let's find the flatten index of the output view
+            if (scope.symbols.strides_as_var) {
+                ss << "vo" << scope.symbols.offsetStridesID(instr.operand[0]);
+            } else {
+                ss << instr.operand[0].start;
+            }
             for(int64_t i=0; i < instr.operand[0].ndim; ++i) {
-                ss << "+i" << i << "*" << instr.operand[0].stride[i];
+                ss << "+i" << i << "*";
+                if (scope.symbols.strides_as_var) {
+                    ss << "vs" << scope.symbols.offsetStridesID(instr.operand[0]) << "_" << i;
+                } else {
+                    ss << instr.operand[0].stride[i];
+                }
             }
             ss << ")";
             ops.push_back(ss.str());
@@ -763,14 +796,11 @@ void write_reduce_identity(bh_opcode opcode, bh_type dtype, stringstream &out) {
     }
 }
 
-vector<bh_instruction*> remove_non_computed_system_instr(vector<bh_instruction> &instr_list,
-                                                         set<bh_base *> &syncs, set<bh_base *> &frees) {
+vector<bh_instruction*> remove_non_computed_system_instr(vector<bh_instruction> &instr_list, set<bh_base *> &frees) {
     vector<bh_instruction*> ret;
     set<const bh_base*> computes;
     for (bh_instruction &instr: instr_list) {
-        if (instr.opcode == BH_SYNC and computes.find(instr.operand[0].base) == computes.end()) {
-            syncs.insert(instr.operand[0].base);
-        } else if (instr.opcode == BH_FREE and computes.find(instr.operand[0].base) == computes.end()) {
+        if (instr.opcode == BH_FREE and not util::exist(computes, instr.operand[0].base)) {
             frees.insert(instr.operand[0].base);
         } else if (not (instr.opcode == BH_NONE or instr.opcode == BH_TALLY)) {
             set<const bh_base*> bases = instr.get_bases_const();
