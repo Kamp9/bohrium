@@ -155,7 +155,7 @@ public:
                 cl::Buffer *buf = createBuffer(base);
 
                 // If the host data is non-null we should copy it to the device
-                if (base->data != NULL) {
+                if (base->data != nullptr) {
                     if (verbose) {
                         std::cout << "Copy to device: " << *base << std::endl;
                     }
