@@ -19,7 +19,7 @@ If not, see <http://www.gnu.org/licenses/>.
 */
 
 #ifndef __BH_VE_OPENCL_ENGINE_OPENCL_HPP
-#define __BH_VE_OPENCL_ENGINE_OPENCL_HPP
+#define __BH_VE_OPENCL_ENGINE_OPENCL_HPP3
 
 #include <map>
 #include <memory>

@@ -42,6 +42,7 @@ map<const string, cl_device_type> device_map = {
 
 // Get the OpenCL device (search order: GPU, ACCELERATOR, DEFAULT, and CPU)
 cl::Device getDevice(const cl::Platform &platform, const string &default_device_type) {
+
     vector<cl::Device> device_list;
     platform.getDevices(CL_DEVICE_TYPE_ALL, &device_list);
 

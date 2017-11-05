@@ -323,7 +323,7 @@ void handle_cpu_execution(SelfType &self, bh_ir *bhir, EngineType &engine, const
 
 // Returns True when we should run the `block` on the device
 template<typename EngineType>
-bool compute_on_device(const Block &block, const EngineType &engine) {
+bool compute_on_device(const Block &block, const EngineType &engine, const ConfigParser &config) {
     uint64_t bytes_on_host=0, bytes_on_device=0;
     for(const bh_base *base: block.getAllBases()) {
         if (engine.baseOnDevice(base)) {
@@ -333,7 +333,29 @@ bool compute_on_device(const Block &block, const EngineType &engine) {
         }
     }
     uint64_t bytes_computing = block.compute_size();
-    return bytes_computing > 0;
+    
+    uint64_t bytes_copy_back = 0;
+    
+
+    float_t dummy_latency = config.defaultGet<float_t>("latency", 100.0);
+    float_t dummy_bandwidth = config.defaultGet<float_t>("bandwidth", 50.0);
+
+    float_t device_comm_time = bytes_on_host / dummy_bandwidth + dummy_latency * (bytes_on_host > 0);
+    float_t host_comm_time = bytes_on_device / dummy_bandwidth + dummy_latency * (bytes_on_device > 0);
+
+    float_t compute_device_time = bytes_computing * 1;
+    float_t compute_host_time = bytes_computing * 10;
+
+    float_t total_device_time = compute_device_time + device_comm_time;
+    float_t total_host_time = compute_host_time + host_comm_time;
+
+    std::cout << "bytes_on_device: " << bytes_on_device << std::endl;
+    std::cout << "bytes_on_host: " << bytes_on_host << std::endl;
+
+    std::cout << "total_device_time: " << total_device_time << std::endl;
+    std::cout << "total_host_time: " << total_host_time << std::endl;
+
+    return total_device_time < total_host_time;
 }
 
 /* Handle execution of regular instructions
@@ -407,7 +429,11 @@ void handle_gpu_execution(SelfType &self, bh_ir *bhir, EngineType &engine, const
         const vector<const LoopB*> threaded_blocks = find_threaded_blocks(block, stat, parallel_threshold);
 
         // We might have to offload the execution to the CPU
-        if (kernel_is_computing and (threaded_blocks.size() == 0 or not compute_on_device(block, engine))) {
+//        cout << kernel_is_computing;
+//        cout << threaded_blocks.size() == 0;
+//        cout << not compute_on_device(block, engine, config);
+//        cout << endl;
+        if (kernel_is_computing and (threaded_blocks.size() == 0 or not compute_on_device(block, engine, config))) {
             if (verbose)
                 cout << "Offloading to CPU\n";
 
