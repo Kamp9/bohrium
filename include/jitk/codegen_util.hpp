@@ -364,92 +364,91 @@ void handle_cpu_execution(SelfType &self, BhIR *bhir, EngineType &engine, const 
 }
 
 // Returns True when we should run the `block` on the device
+//template<typename EngineType>
+//bool compute_on_device(const Block &block, const EngineType &engine, const ConfigParser &config) {
+//    uint64_t bytes_on_host=0, bytes_on_device=0;
+//    for(const bh_base *base: block.getAllBases()) {
+//        if (engine.baseOnDevice(base)) {
+//            bytes_on_device += bh_base_size(base);
+//        } else {
+//            bytes_on_host += bh_base_size(base);
+//        }
+//    }
+//    uint64_t bytes_computing = block.compute_size();
+//
+//    uint64_t bytes_copy_back = 0;
+//
+//
+//    float_t dummy_latency = config.defaultGet<float_t>("latency", 100.0);
+//    float_t dummy_bandwidth = config.defaultGet<float_t>("bandwidth", 50.0);
+//
+//    float_t device_comm_time = bytes_on_host / dummy_bandwidth + dummy_latency * (bytes_on_host > 0);
+//    float_t host_comm_time = bytes_on_device / dummy_bandwidth + dummy_latency * (bytes_on_device > 0);
+//
+//    float_t compute_device_time = bytes_computing * 1;
+//    float_t compute_host_time = bytes_computing * 10;
+//
+//    float_t total_device_time = compute_device_time + device_comm_time;
+//    float_t total_host_time = compute_host_time + host_comm_time;
+//
+//    std::cout << "bytes_on_device: " << bytes_on_device << std::endl;
+//    std::cout << "bytes_on_host: " << bytes_on_host << std::endl;
+//
+//    std::cout << "total_device_time: " << total_device_time << std::endl;
+//    std::cout << "total_host_time: " << total_host_time << std::endl;
+//
+//    return total_device_time < total_host_time;
+
 template<typename EngineType>
-<<<<<<< HEAD
-bool compute_on_device(const Block &block, const EngineType &engine, const ConfigParser &config) {
-    uint64_t bytes_on_host=0, bytes_on_device=0;
-    for(const bh_base *base: block.getAllBases()) {
-        if (engine.baseOnDevice(base)) {
-            bytes_on_device += bh_base_size(base);
-        } else {
-            bytes_on_host += bh_base_size(base);
-        }
-    }
-    uint64_t bytes_computing = block.compute_size();
-    
-    uint64_t bytes_copy_back = 0;
-    
+bool compute_on_device(const Block &block, const EngineType &engine, const SymbolTable &symbols, const BhIR *bhir,
+                       const ConfigParser &config) {
+
+    bool activate = config.defaultGet<bool>("activate", false);
 
     float_t dummy_latency = config.defaultGet<float_t>("latency", 100.0);
     float_t dummy_bandwidth = config.defaultGet<float_t>("bandwidth", 50.0);
+    float_t dummy_slowdown = config.defaultGet<float_t>("slowdown", 10.0);
+    float_t dummy_mprsec = config.defaultGet<float_t>("mprsec", 1000.0);
 
-    float_t device_comm_time = bytes_on_host / dummy_bandwidth + dummy_latency * (bytes_on_host > 0);
-    float_t host_comm_time = bytes_on_device / dummy_bandwidth + dummy_latency * (bytes_on_device > 0);
+    if(activate){
+        const std::set<bh_base *> syncs = bhir->getSyncs();
 
-    float_t compute_device_time = bytes_computing * 1;
-    float_t compute_host_time = bytes_computing * 10;
-
-    float_t total_device_time = compute_device_time + device_comm_time;
-    float_t total_host_time = compute_host_time + host_comm_time;
-
-    std::cout << "bytes_on_device: " << bytes_on_device << std::endl;
-    std::cout << "bytes_on_host: " << bytes_on_host << std::endl;
-
-    std::cout << "total_device_time: " << total_device_time << std::endl;
-    std::cout << "total_host_time: " << total_host_time << std::endl;
-
-    return total_device_time < total_host_time;
-=======
-bool compute_on_device(const Block &block, const EngineType &engine, const SymbolTable &symbols, const BhIR *bhir) {
-    const std::set<bh_base *> syncs = bhir->getSyncs();
-    uint64_t params_on_host=0, params_on_device=0;
-    for(const bh_base *base: symbols.getParams()) {
-        if (not util::exist_nconst(syncs, base)) {
-            if (engine.baseOnDevice(base)) {
-                params_on_device += bh_base_size(base);
-            } else if (base->data != nullptr) {
-                params_on_host += bh_base_size(base);
+        uint64_t params_on_host = 0, params_on_device = 0;
+        for (const bh_base *base: symbols.getParams()) {
+            if (not util::exist_nconst(syncs, base)) {
+                if (engine.baseOnDevice(base)) {
+                    params_on_device += bh_base_size(base);
+                } else if (base->data != nullptr) {
+                    params_on_host += bh_base_size(base);
+                }
             }
         }
-    }
-    uint64_t syncs_on_host=0, syncs_on_device=0;
-    for(const bh_base *base: bhir->getSyncs()) {
-        if (engine.baseOnDevice(base)) {
-            syncs_on_device += bh_base_size(base);
-        } else {
-            syncs_on_host += bh_base_size(base);
+
+        uint64_t syncs_on_host = 0, syncs_on_device = 0;
+        for (const bh_base *base: bhir->getSyncs()){
+            if (engine.baseOnDevice(base)) {
+                syncs_on_device += bh_base_size(base);
+            } else {
+                syncs_on_host += bh_base_size(base);
+            }
         }
+        float_t computing = block.compute_size() / dummy_mprsec;
+
+        float_t params_to_host_comm = params_on_device / dummy_bandwidth + dummy_latency * (params_on_device > 0);
+        float_t params_to_device_comm = params_on_host / dummy_bandwidth + dummy_latency * (params_on_host > 0);
+
+        float_t syncs_to_host_comm = syncs_on_device / dummy_bandwidth + dummy_latency * (syncs_on_device > 0);
+        float_t syncs_to_device_comm = syncs_on_host / dummy_bandwidth + dummy_latency * (syncs_on_host > 0);
+
+        float_t total_device_time = computing + params_to_device_comm + 2 * syncs_to_device_comm + syncs_to_host_comm;
+        float_t total_host_time = computing * dummy_slowdown + params_to_host_comm + syncs_to_host_comm;
+
+        return total_device_time < total_host_time;
+    } else {
+        return true;
     }
-    uint64_t computing = block.compute_size();
-/*
- *
-GPU:
-computing
-params_on_host
-2*syncs_on_host
-syncs_on_device
-
-
-CPU:
-computing
-params_on_device
-syncs_on_device
-
-
-import numpy as np
-import bohrium as bh
-a = np.random.random(100000)
-b = bh.array(a, bohrium=True)
-c = b.copy2numpy()
-
-bh.sum(bh.ones(1000000))
- *
- *
- */
-
-    return true;
->>>>>>> ce231863ab5530702cf955a55034082dba9383a4
 }
+
 
 /* Handle execution of regular instructions
  * 'SelfType' most be a component implementation that exposes:
@@ -522,16 +521,9 @@ void handle_gpu_execution(SelfType &self, BhIR *bhir, EngineType &engine, const 
         const vector<const LoopB*> threaded_blocks = find_threaded_blocks(block, stat, parallel_threshold);
 
         // We might have to offload the execution to the CPU
-<<<<<<< HEAD
-//        cout << kernel_is_computing;
-//        cout << threaded_blocks.size() == 0;
-//        cout << not compute_on_device(block, engine, config);
-//        cout << endl;
-        if (kernel_is_computing and (threaded_blocks.size() == 0 or not compute_on_device(block, engine, config))) {
-=======
         if (kernel_is_computing and (threaded_blocks.size() == 0 or
-                not compute_on_device(block, engine, symbols, bhir))) {
->>>>>>> ce231863ab5530702cf955a55034082dba9383a4
+                not compute_on_device(block, engine, symbols, bhir, config))) {
+
             if (verbose)
                 cout << "Offloading to CPU\n";
 
